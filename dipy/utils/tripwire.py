@@ -46,3 +46,31 @@ class TripWire(object):
     def __getattr__(self, attr_name):
         ''' Raise informative error accessing attributes '''
         raise TripWireError(self._msg)
+
+    def __call__(self, *args, **kargs):
+        """Raise informative error when TripWire is called"""
+        raise TripWireError(self._msg)
+
+def defineif(condition, msg):
+    """Replaces function with a TripWire if condition is False
+
+    Examples
+    --------
+    >>> @defineif(True, 'this does nothing')
+    ... def cow():
+    ...    return 'moo'
+    >>> cow()
+    'moo'
+    >>> @defineif(False, 'pig is a tripwire')
+    ... def pig():
+    ...     return 'oink'
+    >>> pig()
+    Traceback (most recent call last):
+        ...
+    TripWireError: pig is a tripwire
+
+    """
+    if condition:
+        return lambda x : x
+    else:
+        return lambda x : TripWire(msg)
