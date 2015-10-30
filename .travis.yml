@@ -13,7 +13,10 @@ env:
     global:
         - DEPENDS="cython numpy scipy matplotlib h5py nibabel cvxopt"
         - VENV_ARGS="--python=python"
+python:
+    - 2.6
 matrix:
+  include:
     # To test vtk functionality
     - python: 2.7
       sudo: true   # This is set to true for apt-get
