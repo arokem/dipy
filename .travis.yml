@@ -70,9 +70,6 @@ script:
       cp ../.coveragerc .;
       COVER_ARGS="--with-coverage --cover-package dipy";
       fi
-    - if [ "${VTK}" == "1" ]; then
-      VIRT_BUFF='xvfb-run --server-args="-screen 0 1024x768x24"';
-      fi
-    - $VIRT_BUFF nosetests --with-doctest --verbose $COVER_ARGS dipy
+    - nosetests --with-doctest --verbose $COVER_ARGS dipy
 after_success:
     - if [ "${COVERAGE}" == "1" ]; then coveralls; fi
