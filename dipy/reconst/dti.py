@@ -682,7 +682,9 @@ def tensor_prediction(dti_params, gtab, S0):
     evecs = dti_params[..., 3:].reshape(dti_params.shape[:-1] + (3, 3))
     qform = vec_val_vect(evecs, evals)
     del evals, evecs
-    lower_tri = lower_triangular(qform, S0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        lower_tri = lower_triangular(qform, S0)
     del qform
 
     D = design_matrix(gtab)

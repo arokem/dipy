@@ -663,6 +663,9 @@ def test_predict():
     assert_array_almost_equal(dmfit.predict(gtab, S0=100), S)
     assert_array_almost_equal(dm.predict(dmfit.model_params, S0=100), S)
 
+    # All signals should be 0 if the b0 is 0.
+    assert_array_almost_equal(dmfit.predict(gtab, S0=0.), 0.)
+
     fdata, fbvals, fbvecs = get_data()
     data = nib.load(fdata).get_data()
     # Make the data cube a bit larger:
