@@ -425,7 +425,7 @@ class MapmriFit(ReconstFit):
         and radial moment [1]_ eq. (32). The radial moment s acts as a
         sharpening method. The analytical equation for the spherical ODF basis
         is given in [2]_ eq. (C8).
-        
+
         References
         ----------
         .. [1] Ozarslan E. et. al, "Mean apparent propagator (MAP) MRI: A novel
@@ -620,7 +620,7 @@ def isotropic_scale_factor(mu_squared):
     -------
     u0 : float
         closest isotropic scale factor for the isotropic basis
- 
+
     References
     ----------
     .. [1] Ozarslan E. et. al, "Mean apparent propagator (MAP) MRI: A novel
