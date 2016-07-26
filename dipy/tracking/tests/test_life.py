@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import os.path as op
 
@@ -126,6 +127,46 @@ def test_FiberModel_init():
         npt.assert_equal(fiber_matrix.shape, (len(vox_coords) * 64,
                                               len(streamline)))
 
+#DFZ: this only tests with the memory-fit approach, namely paralife
+def test_Paralife():
+    data_file, bval_file, bvec_file = dpd.get_data('small_64D')
+    data_ni = nib.load(data_file)
+    data = data_ni.get_data()
+    data_aff = data_ni.get_affine()
+    bvals, bvecs = (np.load(f) for f in (bval_file, bvec_file))
+    gtab = dpg.gradient_table(bvals, bvecs)
+    evals = [0.001, 0, 0]
+
+    #DFZ: preparing the test data (yes through the FM... a bit weird...)
+    FM = life.FiberModel(gtab, evals)
+    streamline = [np.array([[1, 2, 3], [4, 5, 3], [5, 6, 3], [6, 7, 3]]),
+                  np.array([[1, 2, 3], [4, 5, 3], [5, 6, 3]])]
+    w = np.array([0.5, 0.5])
+    fiber_matrix, vox_coords = FM.setup(streamline, None)
+    sig = opt.spdot(fiber_matrix, w) + 1.0  # Add some isotropic stuff
+    S0 = data[..., gtab.b0s_mask]
+    rel_sig = data[..., ~gtab.b0s_mask]/data[..., gtab.b0s_mask]
+    this_data = np.zeros((10, 10, 10, 64))
+    this_data[vox_coords[:, 0], vox_coords[:, 1], vox_coords[:, 2]] =\
+        (sig.reshape((4, 64)) *
+         S0[vox_coords[:, 0], vox_coords[:, 1], vox_coords[:, 2]])
+    this_data = np.concatenate([data[..., gtab.b0s_mask], this_data], -1)
+
+    #DFZ: memory fit!
+    FMM = life.FiberModel(gtab, conserve_memory=True)
+    FMM.setup_mmap(streamline, None)
+    fitm = FMM.fit(this_data, streamline)
+    
+    #DFZ: check memory-fit results
+    print("MemoryFit: fitm.beta = ", fitm.beta)
+    npt.assert_almost_equal(fitm.predict(streamline)[1],
+                            fitm.data[1], decimal=-1)
+    # Predict with an input GradientTable
+    npt.assert_almost_equal(fitm.predict(streamline, gtab)[1],
+                            fitm.data[1], decimal=-1)
+    npt.assert_almost_equal(
+        this_data[vox_coords[:, 0], vox_coords[:, 1], vox_coords[:, 2]],
+        fitm.data)
 
 def test_FiberFit():
     data_file, bval_file, bvec_file = dpd.get_data('small_64D')
@@ -155,6 +196,9 @@ def test_FiberFit():
     this_data = np.concatenate([data[..., gtab.b0s_mask], this_data], -1)
 
     fit = FM.fit(this_data, streamline)
+    
+    print("SpeedFit: fit.beta = ", fit.beta)
+    
     npt.assert_almost_equal(fit.predict()[1],
                             fit.data[1], decimal=-1)
 
@@ -169,7 +213,9 @@ def test_FiberFit():
     FMM = life.FiberModel(gtab, conserve_memory=True)
 
     fitm = FMM.fit(this_data, streamline)
-
+    
+    print("MemoryFit: fitm.beta = ", fitm.beta)
+    
     npt.assert_almost_equal(fitm.predict(streamline)[1],
                             fitm.data[1], decimal=-1)
 
@@ -207,7 +253,12 @@ def test_fit_data():
     # And a moderate correlation with the Matlab implementation weights:
     npt.assert_(np.corrcoef(matlab_weights, life_fit.beta)[0, 1] > 0.6)
     life_model_memory = life.FiberModel(gtab, conserve_memory=True)
+    # Setup the mmap file
+    life_model_memory.setup_mmap(tensor_streamlines, None)
     life_fit_memory = life_model_memory.fit(data, tensor_streamlines)
     npt.assert_almost_equal(life_fit_memory.beta, life_fit.beta, decimal=1)
     p_model_mem = life_fit_memory.predict(tensor_streamlines)
     npt.assert_(np.corrcoef(p_model, p_model_mem)[0, 1] > 0.9999)
+
+if __name__ == "__main__":
+    test_Paralife()

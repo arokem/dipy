@@ -8,6 +8,7 @@ Pestilli, F., Yeatman, J, Rokem, A. Kay, K. and Wandell B.A. (2014). Validation
 and statistical inference in living connectomes. Nature Methods 11:
 1058-1063. doi:10.1038/nmeth.3098
 """
+
 import numpy as np
 import scipy.sparse as sps
 import scipy.linalg as la
@@ -236,6 +237,7 @@ class LifeSignalMaker(object):
         self.evals = evals
         # Initialize an empty dict to fill with signals for each of the sphere
         # vertices:
+
         self.signal = np.empty((self.sphere.vertices.shape[0],
                                 np.sum(~gtab.b0s_mask)))
         # We'll need to keep track of what we've already calculated:
@@ -313,7 +315,6 @@ def voxel2streamline(streamline, transformed=False, affine=None,
 
     return _voxel2streamline(transformed_streamline,
                              unique_idx.astype(np.intp))
-
 
 
 class FiberModel(ReconstModel):
@@ -399,6 +400,93 @@ class FiberModel(ReconstModel):
         return (to_fit, weighted_signal, b0_signal, relative_signal, mean_sig,
                 vox_data)
 
+    def setup_mmap(self, streamline, affine, sphere=None):
+        """
+        Set up the memory-map file for the LiFE model: the matrix of
+        fiber-contributions to the DWI signal, and the coordinates of voxels
+        for which the equations will be solved
+        Parameters
+        ----------
+        streamline : list
+            Streamlines, each is an array of shape (n, 3)
+        affine : 4 by 4 array
+            Mapping from the streamline coordinates to the data
+        sphere: `dipy.core.Sphere` instance.
+            Whether to approximate (and cache) the signal on a discrete
+            sphere. This may confer a significant speed-up in setting up the
+            problem, but is not as accurate. If `False`, we use the exact
+            gradients along the streamlines to calculate the matrix, instead of
+            an approximation. Defaults to use the 362-vertex symmetric sphere
+            from :mod:`dipy.data`
+        """
+        if sphere is not False:
+            SignalMaker = LifeSignalMaker(self.gtab,
+                                          evals=self.evals,
+                                          sphere=sphere)
+
+        if affine is None:
+            affine = np.eye(4)
+        streamline = transform_streamlines(streamline, affine)
+        # Assign some local variables, for shorthand:
+        all_coords = np.concatenate(streamline)
+        vox_coords = unique_rows(np.round(all_coords).astype(np.intp))
+        del all_coords
+        # We only consider the diffusion-weighted signals:
+        n_bvecs = self.gtab.bvals[~self.gtab.b0s_mask].shape[0]
+        v2f, v2fn = voxel2streamline(streamline, transformed=True,
+                                     affine=affine, unique_idx=vox_coords)
+        
+        col_max = len(streamline)
+
+        fiber_signal = []
+        for s_idx, s in enumerate(streamline):
+            if sphere is not False:
+                fiber_signal.append(SignalMaker.streamline_signal(s))
+            else:
+                fiber_signal.append(streamline_signal(s,
+                                                      self.gtab,
+                                                      self.evals))
+
+        del streamline
+        if sphere is not False:
+            del SignalMaker
+        
+        range_bvecs = np.arange(n_bvecs).astype(int)
+        # In each voxel:
+        for v_idx in range(vox_coords.shape[0]): 
+            para_start = 0 
+            paralife_row = np.zeros(n_bvecs*col_max, dtype=np.intp)
+            paralife_col = np.zeros(n_bvecs*col_max, dtype=np.intp)
+            paralife_sig = np.zeros(n_bvecs*col_max, dtype=np.float)
+                        
+            #each fiber in that voxel:
+            for f_idx in v2f[v_idx]:
+                vox_fiber_sig = np.zeros(n_bvecs)
+                for node_idx in v2fn[f_idx][v_idx]:
+                    vox_fiber_sig += fiber_signal[f_idx][node_idx]
+                
+                #construct the paralife voxel matrix
+                paralife_row[para_start:para_start+n_bvecs] = range_bvecs
+                paralife_col[para_start:para_start+n_bvecs] = f_idx
+                paralife_sig[para_start:para_start+n_bvecs] = vox_fiber_sig
+                para_start += n_bvecs
+                
+            paralife_vox = [paralife_row, paralife_col, paralife_sig]
+
+            #save it to memmap:
+            if 0 == v_idx:
+                mmap_mode = 'w+'
+            else:
+                mmap_mode = 'r+'
+            fp = np.memmap('/tmp/paralife.mmap', dtype='float64', 
+                           mode=mmap_mode, shape=(3,n_bvecs*col_max), 
+                           offset = v_idx*3*n_bvecs*col_max*8)
+            fp[:] = paralife_vox[:]
+            fp.flush() #explicitly flush the memory
+            del fp            
+        
+        return
+
 
     def setup(self, streamline, affine, sphere=None):
         """
@@ -435,6 +523,7 @@ class FiberModel(ReconstModel):
         n_bvecs = self.gtab.bvals[~self.gtab.b0s_mask].shape[0]
         v2f, v2fn = voxel2streamline(streamline, transformed=True,
                                      affine=affine, unique_idx=vox_coords)
+        
         # How many fibers in each voxel (this will determine how many
         # components are in the matrix):
         n_unique_f = len(np.hstack(v2f.values()))
@@ -456,19 +545,19 @@ class FiberModel(ReconstModel):
         del streamline
         if sphere is not False:
             del SignalMaker
-
+        
         keep_ct = 0
         range_bvecs = np.arange(n_bvecs).astype(int)
         # In each voxel:
-        for v_idx in range(vox_coords.shape[0]):
+        for v_idx in range(vox_coords.shape[0]): 
             mat_row_idx = (range_bvecs + v_idx * n_bvecs).astype(np.intp)
+                        
             # For each fiber in that voxel:
             for f_idx in v2f[v_idx]:
                 # For each fiber-voxel combination, store the row/column
                 # indices in the pre-allocated linear arrays
                 f_matrix_row[keep_ct:keep_ct+n_bvecs] = mat_row_idx
                 f_matrix_col[keep_ct:keep_ct+n_bvecs] = f_idx
-
                 vox_fiber_sig = np.zeros(n_bvecs)
                 for node_idx in v2fn[f_idx][v_idx]:
                     # Sum the signal from each node of the fiber in that voxel:
@@ -614,6 +703,8 @@ class FiberModel(ReconstModel):
                 nodes_in_vox = np.where(find_vox)[0]
                 s_in_vox[v_idx].append((sl_idx, nodes_in_vox))
 
+        col_max = len(streamline)
+
         # We no longer need these variables:
         del v2f, streamline, sl_as_coords
 
@@ -621,24 +712,15 @@ class FiberModel(ReconstModel):
         while 1:
             for v_idx in range(vox_coords.shape[0]):
                 mat_row_idx = range_bvecs + v_idx * n_bvecs
-                f_matrix_row = np.zeros(len(s_in_vox[v_idx] * n_bvecs),
-                                        dtype=np.intp)
-                f_matrix_col = np.zeros(len(s_in_vox[v_idx] * n_bvecs),
-                                        dtype=np.intp)
-                f_matrix_sig = np.zeros(len(s_in_vox[v_idx] * n_bvecs),
-                                        dtype=float)
-                for ii, (sl_idx, nodes_in_vox) in enumerate(s_in_vox[v_idx]):
-                    f_matrix_row[ii*n_bvecs:ii*n_bvecs+n_bvecs] = range_bvecs
-                    f_matrix_col[ii*n_bvecs:ii*n_bvecs+n_bvecs] = sl_idx
-                    vox_fib_sig = np.zeros(n_bvecs)
-                    for node_idx in nodes_in_vox:
-                        signal_idx = closest[sl_idx][node_idx]
-                        this_signal = signal_maker[signal_idx]
-                        # Sum the signal from each node of the fiber in that
-                        # voxel:
-                        vox_fib_sig += this_signal
-                    # And add the summed thing into the corresponding rows:
-                    f_matrix_sig[ii*n_bvecs:ii*n_bvecs+n_bvecs] += vox_fib_sig
+                
+                #load from memmap file
+                fpo = np.memmap('/tmp/paralife.mmap', dtype='float64', mode='r', 
+                                offset=v_idx*3*col_max*n_bvecs*8, shape=(3, col_max*n_bvecs))
+                f_matrix_row = fpo[0].astype(np.intp)
+                f_matrix_col = fpo[1].astype(np.intp)
+                f_matrix_sig = fpo[2]
+                del fpo
+                    
                 if np.mod(iteration, check_error_iter):
                     # Calculate the gradient contribution from this voxel:
                     XtXby = gradient_change(f_matrix_row,
@@ -691,7 +773,8 @@ class FiberModel(ReconstModel):
 
                 error_checks += 1
             iteration += 1
-
+                
+                
 class FiberFitSpeed(ReconstFit):
     """
     A fit of the LiFE model to diffusion data
@@ -822,27 +905,20 @@ class FiberFitMemory(ReconstFit):
         f_matrix_shape = (self.fit_data.shape[0], len(streamline))
         range_bvecs = np.arange(n_bvecs).astype(int)
         pred_weighted = np.zeros(self.fit_data.shape)
-
+        
+        col_max = len(streamline)
+           
         for v_idx in range(self.vox_coords.shape[0]):
                 mat_row_idx = (range_bvecs + v_idx * n_bvecs).astype(np.intp)
-                s_in_vox = self.s_in_vox[v_idx]
-                f_matrix_row = np.zeros(len(s_in_vox) * n_bvecs, dtype=np.intp)
-                f_matrix_col = np.zeros(len(s_in_vox) * n_bvecs, dtype=np.intp)
-                f_matrix_sig = np.zeros(len(s_in_vox) * n_bvecs, dtype=float)
-                for ii, (sl_idx, nodes_in_vox) in enumerate(s_in_vox):
-                    ss = streamline[sl_idx]
-                    f_matrix_row[ii*n_bvecs:ii*n_bvecs+n_bvecs] = range_bvecs
-                    f_matrix_col[ii*n_bvecs:ii*n_bvecs+n_bvecs] = sl_idx
-                    vox_fib_sig = np.zeros(n_bvecs)
-                    for node_idx in nodes_in_vox:
-                        signal_idx = self.closest[sl_idx][node_idx]
-                        this_signal = signal_maker[signal_idx]
-                        # Sum the signal from each node of the fiber in that
-                        # voxel:
-                        vox_fib_sig += this_signal
-                    # And add the summed thing into the corresponding rows:
-                    f_matrix_sig[ii*n_bvecs:ii*n_bvecs+n_bvecs] += vox_fib_sig
 
+                #load from memmap file
+                fpo = np.memmap('/tmp/paralife.mmap', dtype='float64', mode='r', 
+                                offset=v_idx*3*col_max*n_bvecs*8, shape=(3, col_max*n_bvecs))
+                f_matrix_row = fpo[0].astype(np.intp)
+                f_matrix_col = fpo[1].astype(np.intp)
+                f_matrix_sig = fpo[2]
+                del fpo
+ 
                 pred_weighted[mat_row_idx] = spdot(f_matrix_row,
                                                    f_matrix_col,
                                                    f_matrix_sig,
