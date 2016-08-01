@@ -119,6 +119,11 @@ def test_ivim_errors():
     else:
         ivim_model = IvimModel(gtab,
                                bounds=([0., 0., 0., 0.], [np.inf, 1., 1., 1.]))
+        ivim_fit = ivim_model.fit(data_multi)
+        est_signal = ivim_fit.predict(gtab, S0=1.)
+        assert_array_equal(est_signal.shape, data_multi.shape)
+        assert_array_almost_equal(est_signal, data_multi)
+        assert_array_almost_equal(ivim_fit.model_params, ivim_params)
 
 
 def test_mask():
@@ -129,7 +134,11 @@ def test_mask():
     mask_correct = data_multi[..., 0] > 0.2
     mask_not_correct = np.array([[False, True, False], [True, False]])
 
-    fit = ivim_model.fit(data_multi, mask_correct)
+    ivim_fit = ivim_model.fit(data_multi, mask_correct)
+    est_signal = ivim_fit.predict(gtab, S0=1.)
+    assert_array_equal(est_signal.shape, data_multi.shape)
+    assert_array_almost_equal(est_signal, data_multi)
+    assert_array_almost_equal(ivim_fit.model_params, ivim_params)
     assert_raises(ValueError, ivim_model.fit, data_multi,
                   mask=mask_not_correct)
 
@@ -164,20 +173,23 @@ def test_bounds_x0():
     IVIM dataset which can be obtained by using the `read_ivim` function
     from dipy.data.fetcher. These are values from the voxel [160, 98, 33]
     which can be obtained by :
-    
+
     .. code-block:: python
-    
+
        from dipy.data.fetcher import read_ivim
        img, gtab = read_ivim()
        data = img.get_data()
        signal = data[160, 98, 33, :]
 
     """
-    test_signal = np.array([4574.34814453, 4745.18164062,  4759.51806641, 4618.24951172, 4665.63623047,
-                            4568.046875,  4525.90478516, 4734.54785156, 4526.41357422, 4299.99414062,
-                            4256.61279297, 4254.50292969, 4098.74707031, 3776.10375977,  3614.0769043,
-                            3440.56445312, 3146.52294922, 3006.94287109, 2879.69580078, 2728.44018555,
-                            2600.09472656, 2570., 2440., 2400., 2380., 2370.])
+    test_signal = np.array([4574.34814453, 4745.18164062,  4759.51806641,
+                            4618.24951172, 4665.63623047, 4568.046875,
+                            4525.90478516, 4734.54785156, 4526.41357422,
+                            4299.99414062, 4256.61279297, 4254.50292969,
+                            4098.74707031, 3776.10375977,  3614.0769043,
+                            3440.56445312, 3146.52294922, 3006.94287109,
+                            2879.69580078, 2728.44018555, 2600.09472656,
+                            2570., 2440., 2400., 2380., 2370.])
 
     ivim_model = IvimModel(gtab)
     ivim_fit = ivim_model.fit(test_signal)
