@@ -7,35 +7,35 @@ and perfusion in the signal acquired with a diffusion MRI sequence
 that contains multiple low b-values. The IVIM model can be understood
 as an adaptation of the work of Stejskal and Tanner [Stejskal65]_
 in biological tissue, and was proposed by Le Bihan [LeBihan84]_.
-The model posits that two compartments exist: a slow moving compartment,
+The model assumes two compartments: a slow moving compartment,
 where particles diffuse in a Brownian fashion as a consequence of thermal
 energy, and a fast moving compartment (the vascular compartment), where
-blood moves as a consequence of a pressure gradient. In this second
-compartment, a pseudo diffusion term $\mathbf{D^*}$ is introduced that
-describes the displacement of the blood elements in an assumed randomly
-laid out vascular network, at the macroscopic level. For the perfusion
-to have a physiological meaning, one expects that $\mathbf{D^*}$ is
-greater than $\mathbf{D}$.
+blood moves as a consequence of a pressure gradient. In the first compartment,
+the diffusion coefficient is $\mathbf{D}$ while in the second compartment, a
+pseudo diffusion term $\mathbf{D^*}$ is introduced that describes the
+displacement of the blood elements in an assumed randomly laid out vascular
+network, at the macroscopic level. According to [LeBihan84]_,
+$\mathbf{D^*}$ is greater than $\mathbf{D}$.
 
 The IVIM model expresses the MRI signal as follows:
 
  .. math::
     S(b)=S_0(fe^{-bD^*}+(1-f)e^{-bD})
 
-where $\mathbf{b}$ is the gradient value (which is dependent on
+where $\mathbf{b}$ is the diffusion gradient weighing value (which is dependent on
 the measurement parameters), $\mathbf{S_{0}}$ is the signal in the absence
 of diffusion gradient sensitization, $\mathbf{f}$ is the perfusion
 fraction, $\mathbf{D}$ is the diffusion coefficient and $\mathbf{D^*}$ is
 the pseudo-diffusion constant, due to vascular contributions.
 
 In the following example we show how to fit the IVIM model
-on a diffusion-weighted dataset and visualize perfusion
-and diffusion. First, we import all relevant modules:
+on a diffusion-weighted dataset and visualize the diffusion and pseudo diffuion
+coefficients. First, we import all relevant modules:
 """
 
 import matplotlib.pyplot as plt
 
-from dipy.reconst.ivim import IvimModel, ivim_function
+from dipy.reconst.ivim import IvimModel, ivim_prediction
 from dipy.data.fetcher import read_ivim
 
 """
@@ -69,7 +69,7 @@ $\mathbf{b} = 0$.
 z = 27
 b = 20
 
-plt.imshow(data[:, :, z, b].T, origin='lower', cmap='gray')
+plt.imshow(data[:, :, z, b].T, origin='lower', cmap='gray', interpolation=None)
 plt.axhline(y=100)
 plt.axvline(x=170)
 plt.savefig("ivim_data_slice.png")
@@ -81,19 +81,18 @@ plt.close()
 
    Heat map of a slice of data
 
-The marked point in the image shows a section containing cerebral spinal
-fluid (CSF) so it should have a very high $\mathbf{f}$ and $\mathbf{D^*}$,
-the area between the right and left is white matter so that should be lower,
-and the region on the right is gray matter and CSF. That should give us some
-contrast to see the values varying across the regions. We will consider the
-marked region for our example.
+The region around the intersection of the cross-hairs in the figure
+contains cerebral spinal fluid (CSF), so it so it should have a very high $\mathbf{f}$
+and $\mathbf{D^*}$, the area between the right and left is white matter so that
+should be lower, and the region on the right is gray matter and CSF. That should
+give us some contrast to see the values varying across the regions.
 """
 
 x1, x2 = 160, 180
 y1, y2 = 90, 110
 data_slice = data[x1:x2, y1:y2, z, :]
 
-plt.imshow(data[x1:x2, y1:y2, z, b].T, origin='lower', cmap="gray")
+plt.imshow(data[x1:x2, y1:y2, z, b].T, origin='lower', cmap="gray", interpolation=None)
 plt.savefig("CSF_slice.png")
 plt.close()
 
@@ -200,7 +199,7 @@ the plot.
 def plot_map(raw_data, variable, limits, filename):
     lower, upper = limits
     plt.title('Map for {}'.format(variable))
-    plt.imshow(raw_data.T, origin='lower', clim=(lower, upper), cmap="gray")
+    plt.imshow(raw_data.T, origin='lower', clim=(lower, upper), cmap="gray", interpolation=None)
     plt.colorbar()
     plt.savefig(filename)
     plt.close()
@@ -209,11 +208,11 @@ def plot_map(raw_data, variable, limits, filename):
 Let us get the various plots so that we can visualize them in one page
 """
 
-plot_map(ivimparams[:, :, 0], "Predicted S0", (0, 10000), "predicted_S0.png")
+plot_map(ivimfit.S0_predicted, "Predicted S0", (0, 10000), "predicted_S0.png")
 plot_map(data_slice[:, :, 0], "Measured S0", (0, 10000), "measured_S0.png")
-plot_map(ivimparams[:, :, 1], "f", (0, 1), "perfusion_fraction.png")
-plot_map(ivimparams[:, :, 2], "D*", (0, 0.01), "perfusion_coeff.png")
-plot_map(ivimparams[:, :, 3], "D", (0, 0.001), "diffusion_coeff.png")
+plot_map(ivimfit.perfusion_fraction, "f", (0, 1), "perfusion_fraction.png")
+plot_map(ivimfit.D_star, "D*", (0, 0.01), "perfusion_coeff.png")
+plot_map(ivimfit.D, "D", (0, 0.001), "diffusion_coeff.png")
 
 """
 .. figure:: predicted_S0.png

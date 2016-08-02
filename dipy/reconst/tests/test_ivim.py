@@ -15,7 +15,7 @@ import numpy as np
 from numpy.testing import (assert_array_equal, assert_array_almost_equal,
                            assert_raises)
 
-from dipy.reconst.ivim import ivim_function, IvimModel
+from dipy.reconst.ivim import ivim_prediction, IvimModel
 from dipy.core.gradients import gradient_table, generate_bvecs
 from dipy.sims.voxel import multi_tensor
 
@@ -52,6 +52,9 @@ ivim_params = np.zeros((2, 2, 1, 4))
 ivim_params[0, 0, 0] = ivim_params[0, 1, 0] = params
 ivim_params[1, 0, 0] = ivim_params[1, 1, 0] = params
 
+ivim_model = IvimModel(gtab)
+ivim_fit_single = ivim_model.fit(data_single)
+ivim_fit_multi = ivim_model.fit(data_multi)
 
 def test_single_voxel_fit():
     """
@@ -73,17 +76,14 @@ def test_single_voxel_fit():
     TensorModel and get an intial guess for f and D. Then, using
     these parameters we fit the entire data for all bvalues.
     """
-    ivim_model = IvimModel(gtab)
-    ivim_fit = ivim_model.fit(data_single)
-
-    est_signal = ivim_function(ivim_fit.model_params, bvals)
+    est_signal = ivim_prediction(ivim_fit_single.model_params, gtab)
 
     assert_array_equal(est_signal.shape, data_single.shape)
     assert_array_almost_equal(est_signal, data_single)
-    assert_array_almost_equal(ivim_fit.model_params, params)
+    assert_array_almost_equal(ivim_fit_single.model_params, params)
 
     # Test predict function for single voxel
-    p = ivim_fit.predict(gtab)
+    p = ivim_fit_single.predict(gtab)
     assert_array_equal(p.shape, data_single.shape)
     assert_array_almost_equal(p, data_single)
 
@@ -95,13 +95,12 @@ def test_multivoxel():
     This is to ensure that the fitting routine takes care of signals packed as
     1D, 2D or 3D arrays.
     """
-    ivim_model = IvimModel(gtab)
-    ivim_fit = ivim_model.fit(data_multi)
+    ivim_fit_multi = ivim_model.fit(data_multi)
 
-    est_signal = ivim_fit.predict(gtab, S0=1.)
+    est_signal = ivim_fit_multi.predict(gtab, S0=1.)
     assert_array_equal(est_signal.shape, data_multi.shape)
     assert_array_almost_equal(est_signal, data_multi)
-    assert_array_almost_equal(ivim_fit.model_params, ivim_params)
+    assert_array_almost_equal(ivim_fit_multi.model_params, ivim_params)
 
 
 def test_ivim_errors():
@@ -130,7 +129,6 @@ def test_mask():
     """
     Test whether setting incorrect mask raises and error
     """
-    ivim_model = IvimModel(gtab)
     mask_correct = data_multi[..., 0] > 0.2
     mask_not_correct = np.array([[False, True, False], [True, False]])
 
@@ -157,7 +155,6 @@ def test_with_higher_S0():
     # Single voxel data
     data_single2 = signal2[0]
 
-    ivim_model = IvimModel(gtab)
     ivim_fit = ivim_model.fit(data_single2)
 
     est_signal = ivim_fit.predict(gtab)
@@ -190,9 +187,100 @@ def test_bounds_x0():
                             3440.56445312, 3146.52294922, 3006.94287109,
                             2879.69580078, 2728.44018555, 2600.09472656,
                             2570., 2440., 2400., 2380., 2370.])
+    x0_test = np.array([1., 0.2, -0.1, -0.001])
+    test_signal = ivim_prediction(x0_test, gtab)
 
-    ivim_model = IvimModel(gtab)
     ivim_fit = ivim_model.fit(test_signal)
 
     est_signal = ivim_fit.predict(gtab)
     assert_array_equal(est_signal.shape, test_signal.shape)
+
+
+def test_predict():
+    """
+    Test the model prediction API.
+    The predict method is already used in previous tests for estimation of the
+    signal. But here, we will test is separately.
+    """
+    assert_array_almost_equal(ivim_fit_single.predict(gtab),
+                              data_single)
+    assert_array_almost_equal(ivim_model.predict(ivim_fit_single.model_params, gtab),
+                              data_single)
+
+    ivim_fit_multi = ivim_model.fit(data_multi)
+    assert_array_almost_equal(ivim_fit_multi.predict(gtab),
+                              data_multi)
+
+
+def test_estimate_x0():
+    """
+    Test if `bounds_check` is set properly in the function `estimate_x0`.
+
+    While estimating x0, if there is noise in the data the estimated x0
+    might not be feasible and turn out to be negative. This will be checked
+    using the bounds in the model. In case of Scipy < 0.17, where bounded
+    least_squares is not implemented, we use the default 
+    `bounds_check = [(0, 0., 0.0, 0.0), (0, 1., 0.1, 0.1)]`
+    which gives the lower and upper bounds to limit x0.
+    """
+
+    ivim_model_bounds = IvimModel(gtab, bounds=None)
+    x0_test = np.array([1., 0.2, -0.001, -0.0001])
+    test_signal = ivim_prediction(x0_test, gtab)
+
+    S0_hat, D_guess = ivim_model_bounds._estimate_S0_D(test_signal)
+
+    f_guess = 1 - S0_hat / test_signal[0]
+    x0_unfeasible = np.array([test_signal[0], f_guess, 10 * D_guess, D_guess])
+
+    # Using this test signal the value for initial `f` in the estimate for
+    # x0 comes out to be negative which is not feasible. The function
+    # replaces the negative value of `f` to 0. according to the lower
+    # bounds supplied in `bounds_check`.
+
+    x0_estimated = ivim_model_bounds.estimate_x0(test_signal)
+    # Test if all signals are positive
+    assert_array_equal((np.any(x0_estimated) >= 0), True)
+    assert_array_equal(x0_estimated, [x0_unfeasible[0],
+                                      0.,
+                                      x0_unfeasible[2],
+                                      x0_unfeasible[3]])
+
+
+def test_fit_object():
+    """
+    Test the method of IvimFit class
+    """
+    assert_raises(IndexError, ivim_fit_single.__getitem__, (-.1, 0, 0))
+    # Check if the S0 called is matching
+    assert_array_almost_equal(ivim_fit_single.__getitem__(0).model_params, 1000.)
+
+    ivim_fit_multi = ivim_model.fit(data_multi)
+    # Should raise a TypeError if the arguments are not passed as tuple
+    assert_raises(TypeError, ivim_fit_multi.__getitem__, -.1, 0)
+    # Should return IndexError if invalid indices are passed
+    assert_raises(IndexError, ivim_fit_multi.__getitem__, (100, -0))
+    assert_raises(IndexError, ivim_fit_multi.__getitem__, (100, -0, 2))
+    assert_raises(IndexError, ivim_fit_multi.__getitem__, (-100, 0))
+    # Check if the get item returns the S0 value for voxel (1,0,0)
+    assert_array_almost_equal(ivim_fit_multi.__getitem__((1, 0, 0)).model_params[0],
+                              data_multi[1, 0, 0][0])
+
+
+def test_shape():
+    """
+    Test if `shape` in `IvimFit` class gives the correct output.
+    """
+    assert_array_equal(ivim_fit_single.shape, ())
+    ivim_fit_multi = ivim_model.fit(data_multi)
+    assert_array_equal(ivim_fit_multi.shape, (2, 2, 1))
+
+
+def test_parameters():
+    """
+    Test the functions for returning individual parameters of the model
+    """
+    assert_array_almost_equal(S0, ivim_fit_single.S0_predicted)
+    assert_array_almost_equal(f, ivim_fit_single.perfusion_fraction)
+    assert_array_almost_equal(D_star, ivim_fit_single.D_star)
+    assert_array_almost_equal(D, ivim_fit_single.D)
