@@ -56,6 +56,22 @@ ivim_model = IvimModel(gtab)
 ivim_fit_single = ivim_model.fit(data_single)
 ivim_fit_multi = ivim_model.fit(data_multi)
 
+bvals_no_b0 = np.array([5., 10., 20., 30., 40., 60., 80., 100.,
+                        120., 140., 160., 180., 200., 220., 240.,
+                        260., 280., 300., 350., 400., 500., 600.,
+                        700., 800., 900., 1000.])
+bvecs_no_b0 = generate_bvecs(N)
+gtab_no_b0 = gradient_table(bvals_no_b0, bvecs.T)
+
+bvals_with_multiple_b0 = np.array([0., 0., 0., 30., 40., 60., 80., 100.,
+                                   120., 140., 160., 180., 200., 220., 240.,
+                                   260., 280., 300., 350., 400., 500., 600.,
+                                   700., 800., 900., 1000.])
+bvecs_with_multiple_b0 = generate_bvecs(N)
+gtab_with_multiple_b0 = gradient_table(bvals_with_multiple_b0,
+                                       bvecs_with_multiple_b0.T)
+
+
 def test_single_voxel_fit():
     """
     Test the implementation of the fitting for a single voxel.
@@ -219,7 +235,7 @@ def test_estimate_x0():
     While estimating x0, if there is noise in the data the estimated x0
     might not be feasible and turn out to be negative. This will be checked
     using the bounds in the model. In case of Scipy < 0.17, where bounded
-    least_squares is not implemented, we use the default 
+    least_squares is not implemented, we use the default
     `bounds_check = [(0, 0., 0.0, 0.0), (0, 1., 0.1, 0.1)]`
     which gives the lower and upper bounds to limit x0.
     """
@@ -228,23 +244,15 @@ def test_estimate_x0():
     x0_test = np.array([1., 0.2, -0.001, -0.0001])
     test_signal = ivim_prediction(x0_test, gtab)
 
-    S0_hat, D_guess = ivim_model_bounds._estimate_S0_D(test_signal)
-
-    f_guess = 1 - S0_hat / test_signal[0]
-    x0_unfeasible = np.array([test_signal[0], f_guess, 10 * D_guess, D_guess])
-
-    # Using this test signal the value for initial `f` in the estimate for
-    # x0 comes out to be negative which is not feasible. The function
-    # replaces the negative value of `f` to 0. according to the lower
+    # Using this test signal the the estimate for x0 gives negative
+    # values for D and D_star, which is not feasible. The function
+    # replaces the negative values of by 0. according to the lower
     # bounds supplied in `bounds_check`.
 
     x0_estimated = ivim_model_bounds.estimate_x0(test_signal)
     # Test if all signals are positive
     assert_array_equal((np.any(x0_estimated) >= 0), True)
-    assert_array_equal(x0_estimated, [x0_unfeasible[0],
-                                      0.,
-                                      x0_unfeasible[2],
-                                      x0_unfeasible[3]])
+    assert_array_almost_equal(x0_estimated, [1.,  0.020789,  0.,  0.])
 
 
 def test_fit_object():
@@ -253,7 +261,8 @@ def test_fit_object():
     """
     assert_raises(IndexError, ivim_fit_single.__getitem__, (-.1, 0, 0))
     # Check if the S0 called is matching
-    assert_array_almost_equal(ivim_fit_single.__getitem__(0).model_params, 1000.)
+    assert_array_almost_equal(
+        ivim_fit_single.__getitem__(0).model_params, 1000.)
 
     ivim_fit_multi = ivim_model.fit(data_multi)
     # Should raise a TypeError if the arguments are not passed as tuple
@@ -284,3 +293,25 @@ def test_parameters():
     assert_array_almost_equal(f, ivim_fit_single.perfusion_fraction)
     assert_array_almost_equal(D_star, ivim_fit_single.D_star)
     assert_array_almost_equal(D, ivim_fit_single.D)
+
+
+def test_multiple_b0():
+    # Generate a signal with multiple b0
+
+    # This gives an isotropic signal.
+    signal = multi_tensor(gtab_with_multiple_b0, mevals, snr=None, S0=S0,
+                          fractions=[f * 100, 100 * (1 - f)])
+    # Single voxel data
+    data_single = signal[0]
+
+    ivim_model_multiple_b0 = IvimModel(gtab_with_multiple_b0)
+
+    x0_estimated = ivim_model_multiple_b0.estimate_x0(data_single)
+    # Test if all signals are positive
+    assert_array_equal((np.any(x0_estimated) >= 0), True)
+    assert_array_almost_equal(x0_estimated, [1000., .1106353,
+                                             0.009510603, 0.0009510603])
+
+
+def test_no_b0():
+    assert_raises(ValueError, IvimModel, gtab_no_b0)
