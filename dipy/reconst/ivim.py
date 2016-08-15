@@ -107,10 +107,10 @@ class IvimModel(ReconstModel):
             default : 200.
 
         bounds : tuple of arrays with 4 elements, optional
-            Bounds to constrain the fitted model parameters. This is only supported for
-            Scipy version > 0.17. When using a older scipy version, this function will raise
-            an error if bounds are different from None.
-            default : ([0., 0., 0., 0.], [np.inf, 1., 1., 1.])
+            Bounds to constrain the fitted model parameters. This is only
+            supported for Scipy version > 0.17. When using a older scipy
+            version, this function will raise an error if bounds are different
+            from None. default : ([0., 0., 0., 0.], [np.inf, 1., 1., 1.])
 
         tol : float, optional
             Tolerance for convergence of minimization.
@@ -118,17 +118,17 @@ class IvimModel(ReconstModel):
 
         options : dict, optional
             Dictionary containing gtol, ftol, eps and maxiter. This is passed
-            to leastsq.
-            default : options={'gtol': 1e-7, 'ftol': 1e-7, 'eps': 1e-7, 'maxiter': 1000}
+            to leastsq. default : options={'gtol': 1e-7, 'ftol': 1e-7, 'eps':
+            1e-7, 'maxiter': 1000}
 
         References
         ----------
-        .. [1] Le Bihan, Denis, et al. "Separation of diffusion
-                   and perfusion in intravoxel incoherent motion MR
-                   imaging." Radiology 168.2 (1988): 497-505.
-        .. [2] Federau, Christian, et al. "Quantitative measurement
-                   of brain perfusion with intravoxel incoherent motion
-                   MR imaging." Radiology 265.3 (2012): 874-881.
+        .. [1] Le Bihan, Denis, et al. "Separation of diffusion and perfusion
+               in intravoxel incoherent motion MR imaging." Radiology 168.2
+               (1988): 497-505.
+        .. [2] Federau, Christian, et al. "Quantitative measurement of brain
+               perfusion with intravoxel incoherent motion MR imaging."
+               Radiology 265.3 (2012): 874-881.
         """
         if not np.any(gtab.b0s_mask):
             e_s = "No measured signal at bvalue == 0."
