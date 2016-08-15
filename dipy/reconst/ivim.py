@@ -170,13 +170,9 @@ class IvimModel(ReconstModel):
         x0_guess : array
             An array with initial values of S0, f, D_star, D for each voxel.
         """
-        bvals_ge_split = self.gtab.bvals[self.gtab.bvals > self.split_b]
-        bvecs_ge_split = self.gtab.bvecs[self.gtab.bvals > self.split_b]
-        gtab_ge_split = gradient_table(bvals_ge_split, bvecs_ge_split.T)
-
-        D_guess, neg_log_S0 = np.polyfit(gtab_ge_split.bvals,
-                                         -np.log(data[self.gtab.bvals >
-                                                 self.split_b]), 1)
+        idx_split = (self.gtab.bvals > self.split_b)
+        D_guess, neg_log_S0 = np.polyfit(self.gtab.bvals[idx_split],
+                                         -np.log(data[idx_split]), 1)
         S0_hat = np.exp(-neg_log_S0)
         f_guess = 1 - S0_hat / np.mean(data[self.gtab.b0s_mask])
         x0 = np.array([np.mean(data[self.gtab.b0s_mask]),
