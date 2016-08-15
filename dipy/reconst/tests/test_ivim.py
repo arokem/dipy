@@ -310,7 +310,7 @@ def test_multiple_b0():
     # Test if all signals are positive
     assert_array_equal((np.any(x0_estimated) >= 0), True)
     assert_array_almost_equal(x0_estimated, [1000., .1106353,
-                                             1.496317e-03, 0.0009510603])
+                                             0.001496317, 0.0009510603])
 
 
 def test_no_b0():
