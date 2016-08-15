@@ -20,6 +20,7 @@ if not SCIPY_LESS_0_17:
 else:
     leastsq = scipy.optimize.leastsq
 
+DEFAULT_BOUNDS = [(0., 0., 0., 0.), (np.inf, 1., 0.1, 0.1)]
 
 def ivim_prediction(params, gtab, S0=1.):
     """The Intravoxel incoherent motion (IVIM) model function.
@@ -145,8 +146,7 @@ class IvimModel(ReconstModel):
             e_s += "bounds. Please update to Scipy 0.17 to use bounds"
             raise ValueError(e_s)
         else:
-            self.bounds = (np.array([0., 0., 0., 0.]),
-                           np.array([np.inf, 1., 0.1, 0.1]))
+            self.bounds = DEFAULT_BOUNDS
 
     def estimate_x0(self, data):
         """
@@ -170,19 +170,28 @@ class IvimModel(ReconstModel):
         x0_guess : array
             An array with initial values of S0, f, D_star, D for each voxel.
         """
-        idx_split = (self.gtab.bvals > self.split_b)
-        D_guess, neg_log_S0 = np.polyfit(self.gtab.bvals[idx_split],
-                                         -np.log(data[idx_split]), 1)
+        idx_split_gt = (self.gtab.bvals > self.split_b)
+        idx_split_st = (self.gtab.bvals <= self.split_b)
+
+        D_guess, neg_log_S0 = np.polyfit(self.gtab.bvals[idx_split_gt],
+                                         -np.log(data[idx_split_gt]), 1)
+
         S0_hat = np.exp(-neg_log_S0)
         f_guess = 1 - S0_hat / np.mean(data[self.gtab.b0s_mask])
+        D_all, _ = np.polyfit(self.gtab.bvals, -np.log(data), 1)
+
+        D_star_guess, _ = np.polyfit(self.gtab.bvals[idx_split_st],
+                                     -np.log(data[idx_split_st]), 1)
+
         x0 = np.array([np.mean(data[self.gtab.b0s_mask]),
-                       f_guess, 10 * D_guess, D_guess])
+                       f_guess, D_star_guess, D_guess])
+
         # The API does not allow bounds for Scipy < 0.17. While estimating x0,
         # if there is noise in the data the estimated x0 might not be feasible.
         # In such a case we will use the values for the parameters
         # from the bounds set with `bounds_check`.
         if self.bounds is None:
-            bounds_check = [(0., 0., 0., 0.), (np.inf, 1., 0.1, 0.1)]
+            bounds_check = DEFAULT_BOUNDS
         else:
             bounds_check = self.bounds
 
