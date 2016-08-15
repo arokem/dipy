@@ -178,8 +178,6 @@ class IvimModel(ReconstModel):
 
         S0_hat = np.exp(-neg_log_S0)
         f_guess = 1 - S0_hat / np.mean(data[self.gtab.b0s_mask])
-        D_all, _ = np.polyfit(self.gtab.bvals, -np.log(data), 1)
-
         D_star_guess, _ = np.polyfit(self.gtab.bvals[idx_split_st],
                                      -np.log(data[idx_split_st]), 1)
 
