@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 from numpy.testing import (run_module_suite,
                            assert_,
@@ -89,7 +90,9 @@ def test_nlmeans_dtype():
     S0n = nlmeans(S0, sigma=np.ones((20, 20, 20)), mask=mask, rician=True)
     assert_equal(S0.dtype, S0n.dtype)
 
-@np.testing.dec.skipif(not have_openmp, 'OpenMP does not appear to be available')
+
+@pytest.mark.skipif(not have_openmp,
+                    reason='OpenMP does not appear to be available')
 def test_nlmeans_4d_3dsigma_and_threads():
     # Input is 4D data and 3D sigma
     data = np.ones((50, 50, 50, 5))
