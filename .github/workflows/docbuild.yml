@@ -31,7 +31,7 @@ jobs:
     - name: Build docs
       run: |
         cd doc
-        make html
+        xvfb-run make html
     - name: Upload docs
       uses: actions/upload-artifact@v1
       with:
