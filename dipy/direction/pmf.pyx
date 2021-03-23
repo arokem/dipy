@@ -111,9 +111,9 @@ cdef class BootPmfGen(PmfGen):
         self.dwi_mask = model.gtab.b0s_mask == 0
         x, y, z = model.gtab.gradients[self.dwi_mask].T
         r, theta, phi = shm.cart2sphere(x, y, z)
-        b_range = (r.max() - r.min()) / r.min()
-        if b_range > tol:
-            raise ValueError("BootPmfGen only supports single shell data")
+        # b_range = (r.max() - r.min()) / r.min()
+        # if b_range > tol:
+        #     raise ValueError("BootPmfGen only supports single shell data")
         B, _, _ = shm.real_sh_descoteaux(self.sh_order, theta, phi)
         self.H = shm.hat(B)
         self.R = shm.lcr_matrix(self.H)
